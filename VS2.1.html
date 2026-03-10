@@ -21,7 +21,7 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:9999;b
 
 /* TITLE */
 #title-screen{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;text-align:center;}
-#title-art{color:var(--c);font-size:52px;line-height:1;letter-spacing:12px;text-shadow:0 0 20px var(--c),0 0 40px rgba(0,229,255,.35),0 0 70px rgba(0,229,255,.12);margin-bottom:22px;animation:phosphor-pulse 5s infinite;}
+#title-art{color:var(--c);font-size:11px;line-height:1.2;letter-spacing:0;text-shadow:0 0 12px var(--c),0 0 30px rgba(0,229,255,.3);margin-bottom:22px;animation:phosphor-pulse 5s infinite;white-space:pre;font-family:'Courier New',monospace;}
 #title-sub{color:#6a9a6a;font-size:11px;letter-spacing:4px;margin-bottom:36px;}
 .tbtn{display:block;margin:6px auto;background:none;border:1px solid var(--g);color:var(--g);font-family:inherit;font-size:13px;padding:9px 52px;cursor:pointer;letter-spacing:2px;text-transform:uppercase;transition:all .15s;}
 .tbtn:hover{background:var(--g);color:#000;}
@@ -271,7 +271,13 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:9999;b
 <!-- TITLE -->
 <div id="title-screen">
   <div id="title-boot">&gt; INITIALIZING EREBUS STATION LINK...<br>&gt; ENCRYPTION HANDSHAKE: OK<br>&gt; OPERATOR CLEARANCE: ALPHA-7 VERIFIED</div>
-  <div id="title-art">VOID SECTOR</div>
+  <div id="title-art">
+██╗   ██╗ ██████╗ ██╗██████╗     ███████╗███████╗ ██████╗████████╗ ██████╗ ██████╗
+██║   ██║██╔═══██╗██║██╔══██╗    ██╔════╝██╔════╝██╔════╝╚══██╔══╝██╔═══██╗██╔══██╗
+██║   ██║██║   ██║██║██║  ██║    ███████╗█████╗  ██║        ██║   ██║   ██║██████╔╝
+╚██╗ ██╔╝██║   ██║██║██║  ██║    ╚════██║██╔══╝  ██║        ██║   ██║   ██║██╔══██╗
+ ╚████╔╝ ╚██████╔╝██║██████╔╝    ███████║███████╗╚██████╗   ██║   ╚██████╔╝██║  ██║
+  ╚═══╝   ╚═════╝ ╚═╝╚═════╝     ╚══════╝╚══════╝ ╚═════╝   ╚═╝    ╚═════╝ ╚═╝  ╚═╝</div>
   <div id="title-sub">EREBUS STATION :: CLASSIFIED LINK ESTABLISHED</div>
   <button class="tbtn" id="btn-new">[ AUTHENTICATE &amp; DEPLOY ]</button>
   <div style="margin-top:18px;font-size:11px;color:#2a4a2a;">WASD: Move &nbsp;|&nbsp; Q: Ability &nbsp;|&nbsp; C: Codex &nbsp;|&nbsp; I: Inventory &nbsp;|&nbsp; Scroll: Zoom</div>
@@ -912,7 +918,6 @@ function moveTo(e,tx,ty){
   }
 }
 function wander(e){
-  if(Math.random()<0.4)return;
   const dirs=[[1,0],[-1,0],[0,1],[0,-1]];
   const shuffled=dirs.sort(()=>Math.random()-0.5);
   for(const[mx,my]of shuffled){
@@ -1306,6 +1311,7 @@ function setZoom(z){
   // Update wrapper size hint for scrolling
   const wrap=document.getElementById('map-wrap');
   wrap.querySelector('#zoom-indicator').textContent=`ZOOM ${Math.round(zoomLevel*100)}%`;
+  wrap.style.cursor=zoomLevel>1.0?'grab':'';
 }
 function drawCell(x,y,char,color,bold){
   const px=x*CW+CW/2,py=y*CH+CH/2;
@@ -1350,15 +1356,18 @@ function render(){
         if(itm){ctx.fillStyle=itm.color;ctx.fillText(ITEM_ICON[itm.type]||'?',px,py);continue;}
       }
       const tile=G.map[y][x];
-      let ch,col;
       if(tile===T.WALL){
-        ch=wallChar(x,y);
-        col=vis?'#3a8a3a':'#162a16';
+        ctx.fillStyle=vis?'#1e5a1e':'#0a1f0a';
+        ctx.fillRect(x*CW,y*CH,CW,CH);
+        // Subtle inner highlight for depth
+        ctx.fillStyle=vis?'rgba(80,200,80,0.08)':'rgba(40,100,40,0.05)';
+        ctx.fillRect(x*CW,y*CH,CW,1);
+        ctx.fillRect(x*CW,y*CH,1,CH);
       }else{
-        [ch,col]=vis?(TV[tile]||TV[T.FLOOR]):(TD[tile]||TD[T.FLOOR]);
+        const[ch,col]=vis?(TV[tile]||TV[T.FLOOR]):(TD[tile]||TD[T.FLOOR]);
+        ctx.fillStyle=col;
+        ctx.fillText(ch,px,py);
       }
-      ctx.fillStyle=col;
-      ctx.fillText(ch,px,py);
     }
   }
   updateStats();updateMsgs();
@@ -1546,11 +1555,30 @@ document.addEventListener('keydown',e=>{
 
 // Mouse wheel zoom on map
 document.addEventListener('DOMContentLoaded',()=>{
-  document.getElementById('map-wrap').addEventListener('wheel',e=>{
+  const wrap=document.getElementById('map-wrap');
+  wrap.addEventListener('wheel',e=>{
     if(!G||G.state==='dead'||G.state==='won')return;
     setZoom(zoomLevel+(e.deltaY>0?-0.12:0.12));
     e.preventDefault();
   },{passive:false});
+
+  // Drag-to-pan when zoomed in
+  let isPanning=false,panStartX=0,panStartY=0,panScrollX=0,panScrollY=0;
+  wrap.addEventListener('mousedown',e=>{
+    if(zoomLevel<=1.0)return;
+    isPanning=true;
+    panStartX=e.clientX;panStartY=e.clientY;
+    panScrollX=wrap.scrollLeft;panScrollY=wrap.scrollTop;
+    wrap.style.cursor='grabbing';
+    e.preventDefault();
+  });
+  wrap.addEventListener('mousemove',e=>{
+    if(!isPanning)return;
+    wrap.scrollLeft=panScrollX-(e.clientX-panStartX);
+    wrap.scrollTop=panScrollY-(e.clientY-panStartY);
+  });
+  wrap.addEventListener('mouseup',()=>{isPanning=false;wrap.style.cursor=zoomLevel>1.0?'grab':'';});
+  wrap.addEventListener('mouseleave',()=>{isPanning=false;wrap.style.cursor=zoomLevel>1.0?'grab':'';});
 });
 
 window.addEventListener('keydown',e=>{
