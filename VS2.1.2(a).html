@@ -247,6 +247,7 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:9999;b
 #game-msg::before{
   content:'';position:absolute;inset:0;z-index:0;pointer-events:none;
   background:repeating-linear-gradient(to bottom,transparent 0px,transparent 2px,rgba(0,0,0,.25) 2px,rgba(0,0,0,.25) 4px);
+  animation:crt-roll 8s linear infinite;
 }
 
 /* LINK STATUS */
@@ -384,6 +385,18 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:9999;b
 .trade-verdict.good{color:#44ff88;border-color:#1a5a1a;}
 .trade-verdict.bad{color:#ff8844;border-color:#5a2a1a;}
 #trade-foot{display:flex;flex-direction:column;align-items:center;border-top:1px solid var(--br);padding-top:8px;gap:4px;flex-shrink:0;}
+
+/* MODAL CRT OVERLAY */
+#inv-screen,#codex-screen,#help-screen,#npc-screen{overflow:hidden;}
+#inv-screen::before,#codex-screen::before,#help-screen::before,#npc-screen::before,#trade-screen::before{
+  content:'';position:absolute;inset:0;z-index:500;pointer-events:none;
+  background:repeating-linear-gradient(
+    to bottom,
+    transparent 0px,transparent 2px,
+    rgba(0,0,0,.20) 2px,rgba(0,0,0,.20) 4px
+  );
+  animation:crt-roll 8s linear infinite;
+}
 </style>
 </head>
 <body>
@@ -701,26 +714,40 @@ const ITEM_DEFS={
   military_pack:     {char:'⊡',name:'Military Pack',    color:'#668844',type:'backpack',invBonus:6,value:42,desc:'+6 inventory slots.'},
 };
 
-const ITEM_POOLS=[
-  ['med_stim','med_stim','energy_cell','plasma_blade','shock_baton','nano_mesh','energy_shield','quantum_dagger','small_backpack'],
-  ['med_stim','energy_cell','nano_heal','ion_rifle','pulse_pistol','void_plate','stealth_suit','reactive_plate','neural_whip','scatter_shot','small_backpack','standard_backpack'],
-  ['nano_heal','energy_cell','hyper_boost','nano_sword','arc_lance','phase_cloak','void_plate','nano_carapace','arcane_crystal','plasma_caster','fusion_axe','standard_backpack'],
-  ['nano_heal','hyper_boost','overclock','full_repair','void_blade','phase_blade','nano_carapace','arcane_crystal','void_crystal','sniper_rail','fusion_axe','military_pack'],
+const WEAPON_POOLS=[
+  ['plasma_blade','shock_baton','quantum_dagger'],
+  ['ion_rifle','pulse_pistol','neural_whip','scatter_shot'],
+  ['nano_sword','arc_lance','plasma_caster','fusion_axe'],
+  ['void_blade','phase_blade','sniper_rail','fusion_axe'],
 ];
+const ARMOR_POOLS=[
+  ['nano_mesh','energy_shield'],
+  ['void_plate','stealth_suit','reactive_plate'],
+  ['phase_cloak','void_plate','nano_carapace'],
+  ['nano_carapace','phase_cloak','reactive_plate'],
+];
+const CONSUMABLE_POOLS=[
+  ['med_stim','med_stim','energy_cell','small_backpack'],
+  ['med_stim','energy_cell','nano_heal','small_backpack','standard_backpack'],
+  ['nano_heal','energy_cell','hyper_boost','arcane_crystal','standard_backpack'],
+  ['nano_heal','hyper_boost','overclock','full_repair','arcane_crystal','void_crystal','military_pack'],
+];
+// Combined pool for traders and NPC rewards
+const ITEM_POOLS=WEAPON_POOLS.map((wp,i)=>[...wp,...ARMOR_POOLS[i],...CONSUMABLE_POOLS[i]]);
 
 // ============================================================
 // WEAPON QUALITY SYSTEM
 // ============================================================
 const QUALITY_PROPS=[
-  {key:'atkMod',      label:'+{v} ATK',           range:[1,4]},
-  {key:'defMod',      label:'+{v} DEF',            range:[1,3]},
-  {key:'critChance',  label:'{v}% crit chance',    range:[8,18]},
-  {key:'leechChance', label:'{v}% HP leech',       range:[10,20]},
-  {key:'epRegen',     label:'+{v} EP/turn',        range:[1,2]},
-  {key:'hpRegen',     label:'+{v} HP/turn',        range:[1,2]},
-  {key:'xpBonus',     label:'+{v}% XP bonus',      range:[10,25]},
-  {key:'poisonChance',label:'{v}% poison on hit',  range:[15,30]},
-  {key:'stunChance',  label:'{v}% stun on hit',    range:[8,18]},
+  {key:'atkMod',      label:'+{v} ATK',           range:[1,2]},
+  {key:'defMod',      label:'+{v} DEF',            range:[1,2]},
+  {key:'critChance',  label:'{v}% crit chance',    range:[5,12]},
+  {key:'leechChance', label:'{v}% HP leech',       range:[5,12]},
+  {key:'epRegen',     label:'+{v} EP/turn',        range:[1,1]},
+  {key:'hpRegen',     label:'+{v} HP/turn',        range:[1,1]},
+  {key:'xpBonus',     label:'+{v}% XP bonus',      range:[5,15]},
+  {key:'poisonChance',label:'{v}% poison on hit',  range:[8,18]},
+  {key:'stunChance',  label:'{v}% stun on hit',    range:[5,12]},
 ];
 const QUALITY_TIERS=[
   [0,'Salvaged'],[6,'Refined'],[12,'Enhanced'],[18,'Superior'],[26,'Prime'],[34,'Void-Forged']
@@ -728,7 +755,7 @@ const QUALITY_TIERS=[
 function rollItemQualities(item){
   const pool=[...QUALITY_PROPS];
   const chosen=[];
-  for(let i=0;i<3;i++){const idx=rnd(pool.length);chosen.push(pool.splice(idx,1)[0]);}
+  const numQ=1+rnd(2);for(let i=0;i<numQ;i++){const idx=rnd(pool.length);chosen.push(pool.splice(idx,1)[0]);}
   let total=0;
   item.qualities=chosen.map(q=>{
     const v=q.range[0]+rnd(q.range[1]-q.range[0]+1);
@@ -737,6 +764,40 @@ function rollItemQualities(item){
   });
   let prefix=QUALITY_TIERS[0][1];
   for(const[threshold,pfx]of QUALITY_TIERS){if(total>=threshold)prefix=pfx;}
+  item.qualityName=`${prefix} ${item.name}`;
+}
+
+// ============================================================
+// ARMOR QUALITY SYSTEM
+// ============================================================
+const ARMOR_QUALITY_PROPS=[
+  {key:'defBoost',     label:'+{v} DEF',             range:[1,2]},
+  {key:'evasionBoost', label:'{v}% dodge chance',    range:[5,10]},
+  {key:'thornsBoost',  label:'reflects {v}% damage', range:[5,10]},
+  {key:'hpRegenBoost', label:'+{v} HP regen/turn',   range:[1,1]},
+  {key:'stealthBoost', label:'reduced detection',    range:[1,1]},
+];
+const ARMOR_QUALITY_TIERS=[
+  [0,'Scavenged'],[3,'Patched'],[6,'Reinforced'],[9,'Hardened'],[13,'Aegis'],[17,'Void-Tempered']
+];
+function rollArmorQualities(item){
+  const pool=[...ARMOR_QUALITY_PROPS];
+  const numQ=1+rnd(2);
+  const chosen=[];
+  for(let i=0;i<numQ;i++){const idx=rnd(pool.length);chosen.push(pool.splice(idx,1)[0]);}
+  let total=0;
+  item.qualities=chosen.map(q=>{
+    const v=q.range[0]+rnd(q.range[1]-q.range[0]+1);
+    total+=v;
+    if(q.key==='defBoost')item.def+=v;
+    else if(q.key==='evasionBoost')item.evasion=(item.evasion||0)+v/100;
+    else if(q.key==='thornsBoost')item.thorns=(item.thorns||0)+v/100;
+    else if(q.key==='hpRegenBoost')item.hpRegenBonus=(item.hpRegenBonus||0)+v;
+    else if(q.key==='stealthBoost')item.stealth=true;
+    return{key:q.key,value:v,label:q.label.replace('{v}',v)};
+  });
+  let prefix=ARMOR_QUALITY_TIERS[0][1];
+  for(const[threshold,pfx]of ARMOR_QUALITY_TIERS){if(total>=threshold)prefix=pfx;}
   item.qualityName=`${prefix} ${item.name}`;
 }
 
@@ -805,6 +866,8 @@ const clamp=(v,lo,hi)=>Math.min(hi,Math.max(lo,v));
 const dist=(ax,ay,bx,by)=>Math.abs(ax-bx)+Math.abs(ay-by);
 const k=(x,y)=>y*MAP_W+x;
 
+function shuffle(arr){for(let i=arr.length-1;i>0;i--){const j=rnd(i+1);[arr[i],arr[j]]=[arr[j],arr[i]];}return arr;}
+
 function pickW(arr,ws){
   let t=ws.reduce((a,b)=>a+b,0),r=Math.random()*t;
   for(let i=0;i<arr.length;i++){r-=ws[i];if(r<=0)return arr[i];}
@@ -832,7 +895,7 @@ function iAt(x,y){return G.iMap.get(k(x,y))||null;}
 // ============================================================
 function genFloor(){
   G.map=Array.from({length:MAP_H},()=>new Array(MAP_W).fill(T.WALL));
-  G.entities=[];G.floorItems=[];
+  G.entities=[];G.floorItems=[];G.weaponDeck=[];G.armorDeck=[];
   const rooms=[];
   for(let i=0;i<150;i++){
     const w=5+rnd(12),h=5+rnd(10);
@@ -920,11 +983,22 @@ function spawnNPC(x,y){
   G.eMap.set(k(x,y),npc);
 }
 function spawnI(x,y){
-  const tier=clamp(Math.floor((G.floor-1)/2),0,ITEM_POOLS.length-1);
-  const id=ITEM_POOLS[tier][rnd(ITEM_POOLS[tier].length)];
+  const tier=clamp(Math.floor((G.floor-1)/2),0,WEAPON_POOLS.length-1);
+  const r=Math.random();
+  let id;
+  if(r<0.38){
+    if(!G.weaponDeck.length)G.weaponDeck=shuffle([...WEAPON_POOLS[tier]]);
+    id=G.weaponDeck.pop();
+  }else if(r<0.60){
+    if(!G.armorDeck.length)G.armorDeck=shuffle([...ARMOR_POOLS[tier]]);
+    id=G.armorDeck.pop();
+  }else{
+    const cp=CONSUMABLE_POOLS[tier];id=cp[rnd(cp.length)];
+  }
   const def=ITEM_DEFS[id];
   const item={id,...def,x,y};
   if(def.type==='weapon')rollItemQualities(item);
+  if(def.type==='armor')rollArmorQualities(item);
   G.floorItems.push(item);
   G.iMap.set(k(x,y),item);
 }
@@ -1824,7 +1898,7 @@ function updateStats(){
   document.getElementById('b-ep').style.width=(p.ep/p.maxEp*100)+'%';
   document.getElementById('b-xp').style.width=(p.xp/p.xpNext*100)+'%';
   document.getElementById('s-wpn').textContent=p.equipped.weapon?`${p.equipped.weapon.char} ${p.equipped.weapon.qualityName||p.equipped.weapon.name}`:'(fists)';
-  document.getElementById('s-arm').textContent=p.equipped.armor?`${p.equipped.armor.char} ${p.equipped.armor.name}`:'(none)';
+  document.getElementById('s-arm').textContent=p.equipped.armor?`${p.equipped.armor.char} ${p.equipped.armor.qualityName||p.equipped.armor.name}`:'(none)';
   const sbp=document.getElementById('s-bkp');if(sbp)sbp.textContent=p.equipped.backpack?`${p.equipped.backpack.char} ${p.equipped.backpack.name} (+${p.equipped.backpack.invBonus})`:'(none)';
   const abl=ABILITIES[p.cls];
   if(abl){
@@ -1866,7 +1940,7 @@ function updateMsgs(){
   el.innerHTML=G.messages.slice(0,12).map((m,i)=>
     `<div class="msg${i>3?' mo':''}" style="color:${MSG_COLORS[m.t]||'var(--g)'}">&#9658; ${m.text}</div>`
   ).join('');
-  el.scrollTop=el.scrollHeight;
+  el.scrollTop=0;
 }
 
 // ============================================================
